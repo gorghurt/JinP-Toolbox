@@ -38,7 +38,11 @@ wakati=MeCab.Tagger("-O wakati")
 s=False
 k=False
 w=False
-
+O=False
+ignore_words=["ある", "bla"];
+ignore_kanji=["a","b","c"]
+#blacklist für mecab, dinge wie hilfsverben und partikel und satzzeichen sollen nicht dazu
+Blacklist=['助詞-係助詞','助動詞','記号-一般','記号-句点','助詞-格助詞-連語'] #partikel,   '名詞-サ変接続'-nomen-??? kommt bei satzzeichen
 
 
 class Window(QtGui.QMainWindow):
@@ -94,7 +98,9 @@ class Window(QtGui.QMainWindow):
         #self.spacebutton.clicked.connect(lambda: self.space())
         self.Wort=QtGui.QCheckBox("Wörter zählen".decode("utf-8"), self)
         self.Kanji=QtGui.QCheckBox("Kanji zählen".decode("utf-8"), self)
-	
+	self.OriginalText=QtGui.QCheckBox("Original Text".decode("utf-8"),self)
+	self.ignoreWords_Box = QtGui.QCheckBox("Wörter in Wortlise ignorieren".decode("utf-8"), self)
+ 	self.ignoreKanji_Box = QtGui.QCheckBox("Kanji in Kanjilise ignorieren".decode("utf-8"), self)
 
         self.processbutton=QtGui.QPushButton("Ausführen".decode("utf-8"))
         self.processbutton.clicked.connect(lambda: self.process_button())
@@ -105,17 +111,21 @@ class Window(QtGui.QMainWindow):
       	grid0=QtGui.QGridLayout()
       	grid1=QtGui.QGridLayout()
         #grid = QtGui.QHBoxLayout()
-        grid0.setSpacing(10)
-        grid1.setSpacing(10)
+        grid0.setSpacing(10) #oberer teil
+        grid1.setSpacing(10) #unterer teil
 
         grid0.addWidget(self.eingabet,0,0)
         grid0.addWidget(self.textedit,1,0,5,4)
         grid0.addWidget(self.space,6,0)
         grid0.addWidget(self.Wort,6,1)
         grid0.addWidget(self.Kanji,6,2)
-        grid0.addWidget(self.processbutton,6,3)
-        grid1.addWidget(self.ausgabet,7,0)
-        grid1.addWidget(self.ausgabete,8,0,13,4)
+	grid0.addWidget(self.OriginalText,6,3)
+        grid0.addWidget(self.processbutton,7,3)
+	grid0.addWidget(self.ignoreWords_Box,7,1)
+        grid0.addWidget(self.ignoreKanji_Box,7,2)
+
+        grid1.addWidget(self.ausgabet,8,0)
+        grid1.addWidget(self.ausgabete,9,0,13,4)
         Widget=QtGui.QWidget()
         Widget.setLayout(grid0)
         #Widget1=QtGui.QWidget()
@@ -160,14 +170,22 @@ class Window(QtGui.QMainWindow):
 
     def process_button(self):
     	#self.progressbar.setMaximum(0)
-        eingabe=self.textedit.toPlainText()#toUtf8
+        eingabe=UnicodeDammit(self.textedit.toPlainText()).unicode_markup#toUtf8
         #print eingabe
         #print smart_str(eingabe)
         ##text=tools.process(smart_str(eingabe),self.space.checkState(),self.Kanji.checkState(),self.Wort.checkState())
-	text=tools.process(eingabe,self.space.checkState(),self.Kanji.checkState(),self.Wort.checkState())
+	#eingabe=self.textedit.toPlainText()
+	if self.ignoreWords_Box.checkState() and self.ignoreKanji_Box.checkState():
+		text=tools.process(eingabe,self.space.checkState(),self.Kanji.checkState(),self.Wort.checkState(),self.OriginalText.checkState(),ignore_words,ignore_kanji)
+	elif self.ignoreWords_Box.checkState():
+		text=tools.process(eingabe,self.space.checkState(),self.Kanji.checkState(),self.Wort.checkState(),self.OriginalText.checkState(),ignore_words,[])
+	elif self.ignoreKanji_Box.checkState(): 
+		text=tools.process(eingabe,self.space.checkState(),self.Kanji.checkState(),self.Wort.checkState(),self.OriginalText.checkState(),[],ignore_kanji)
+	else:
+		text=tools.process(eingabe,self.space.checkState(),self.Kanji.checkState(),self.Wort.checkState(),self.OriginalText.checkState())
        	# print smart_str(text)
         #self.ausgabete.setPlainText(smart_str(text).decode("utf-8"))
-        self.ausgabete.setPlainText(text.decode("utf-8"))
+        self.ausgabete.setPlainText(text)
         #self.progressbar.setMaximum(1)
 
 class tools:
@@ -180,7 +198,7 @@ class tools:
 		ausgabe=""
 		for i in zeilen :
 			ausgabe=ausgabe+wakati.parse(unicode(i).encode("utf-8"))
-		return ausgabe
+		return UnicodeDammit(ausgabe).unicode_markup
 	def kanjicount(self,text):
 		#print "kanjicount in progress"
 		#words=list(smart_unicode(text))
@@ -190,11 +208,13 @@ class tools:
 		count.append([])
 		words2=words[:]
 		for item in words2:
-			if item not in count[0]:
-				count[0].append(item)
+			if item not in count[0] and item not in self.ignore_kanji:
+				count[0].append(UnicodeDammit(item).unicode_markup)
 				count[1].append(words.count(item))
-		#gesammtzahl der wￃﾶrter oben einfￃﾼgen
-		count[0].insert(0,"++")
+
+		count[1].insert(0,len(count[0])) #anzahl der vorkommenden Wörter
+		count[0].insert(0,"--")
+		count[0].insert(0,"++") #gesammtzahl der wￃﾶrter im text oben einfￃﾼgen
 		count[1].insert(0,len(words2))
 		return count
 
@@ -212,20 +232,24 @@ class tools:
 		#nach tabs trennen und 3. item(wörter) benutzen
 		for item in zeilen :
 			tabs=item.split("\t")
-			words.append(tabs[2])
+			if tabs[3] not in Blacklist:
+				words.append(tabs[2])
 		#print "wordcount tabs durch"
 		words2=words[:]  #wort liste kopieren
 		for item in words2:
-			if item not in count[0]:
+			itemunicode=UnicodeDammit(item).unicode_markup
+			if itemunicode not in count[0] and item not in self.ignore_words:
 				#löschen ist zeitaufwändiger als mehrmals ignorieren
 				#while item in words:  #wort aus liste entfernen
 				#	words.remove(item)
 			#else:
-				count[0].append(item)
+				count[0].append(itemunicode)
 				count[1].append(words.count(item))
-		#gesammtzahl der w￯﾿ﾃ￯ﾾﾶrter oben einf￯﾿ﾃ￯ﾾﾼgen
+		
+		count[1].insert(0,len(count[0])) #anzahl der vorkommenden Wörter
+		count[0].insert(0,"--")
+		count[1].insert(0,len(words2)) #gesammtzahl der wￃﾶrter im text oben einfￃﾼgen
 		count[0].insert(0,"++")
-		count[1].insert(0,len(words2))
 		return count
 
 	def sortcount(self,count1):#tut noch nicht
@@ -250,12 +274,15 @@ class tools:
 		#print "countsort in progress"
 		items=[]
 		#print count
-		for i in count[0]:
-			pos=count[0].index(i)
-			items.append((i,count[1][pos]))
+		for i in range(2,len(count[0])):
+			pos=i
+			items.append((count[0][pos],count[1][pos]))
 		#print items
 		items.sort(key=lambda item:item[1], reverse=True)
 		#print items
+
+		items=[(count[0][0],count[1][0]),(count[0][1],count[1][1])]+items
+
 		return items
 	def sort_by_value(self,d):
 	    	""" Returns the keys of dictionary d sorted by their values """
@@ -271,10 +298,14 @@ class tools:
 		else:
 			print text
 
-	def process(self,eingabe,s,k,w,O=False):
+	def process(self,eingabe,s,k,w,O=False,ignoreWords=[], ignoreKanji=[]):
+		#zusatz für ignorier Listen:
+		self.ignore_words=ignoreWords
+		self.ignore_kanji=ignoreKanji
+
 		text="" #hier lokal
 		if O:
-			text=text + eingabe + "\n"+"\n"		
+			text=text+ eingabe + "\n"+"\n"		
 		if s :
 			text=text + self.space(eingabe) +"\n"+"\n"
 
@@ -290,7 +321,7 @@ class tools:
 			sort=self.countsort(count)
 			text=text +"Kanjiliste:"
 			for i in sort:
-				text=text +"\n"+ i[0].encode("utf-8")+" : "+str(i[1])
+				text=text +"\n"+ i[0]+" : "+str(i[1])
 			text=text +"\n\n"
 		return text
 tools=tools()
