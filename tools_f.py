@@ -42,7 +42,7 @@ O=False
 ignore_words=["ある", "bla"];
 ignore_kanji=["a","b","c"]
 #blacklist für mecab, dinge wie hilfsverben und partikel und satzzeichen sollen nicht dazu
-Blacklist=['助詞-係助詞','助動詞','記号-一般','記号-句点','助詞-格助詞-連語'] #partikel,   '名詞-サ変接続'-nomen-??? kommt bei satzzeichen
+Blacklist=['助詞','記号', 'UNKNOWN','助動詞'] #partikel,   '名詞-サ変接続'-nomen-??? kommt bei satzzeichen , old: ['助詞-係助詞','助動詞','記号-一般','記号-句点','助詞-格助詞-連語',
 
 
 class Window(QtGui.QMainWindow):
@@ -232,7 +232,11 @@ class tools:
 		#nach tabs trennen und 3. item(wörter) benutzen
 		for item in zeilen :
 			tabs=item.split("\t")
-			if tabs[3] not in Blacklist:
+			fail=False
+			for i in Blacklist:
+				if i in tabs[3]:
+					fail=True
+			if not fail:			
 				words.append(tabs[2])
 		#print "wordcount tabs durch"
 		words2=words[:]  #wort liste kopieren
